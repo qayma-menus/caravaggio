@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#2D1B13" />
+    <title>كاراڤاچيو Caravaggio Coffee — المنيو والطلب أونلاين | كوم حمادة</title>
+    <meta
+      name="description"
+      content="منيو كاراڤاچيو كافيه وحلواني الكامل — قهوة مختصة، آيس كوفي، ميلك شيك، سموزي، ودوناتس وحلويات طازجة في فرعي التحرير والمواساة بكوم حمادة."
+    />
+    <meta property="og:title" content="كاراڤاچيو Caravaggio Coffee — Every sip with freshness" />
+    <meta
+      property="og:description"
+      content="اطلب أونلاين للتوصيل أو من ترابيزتك داخل الكافيه في فرعي التحرير والمواساة بكوم حمادة."
+    />
+    <meta property="og:url" content="https://caravaggio.qayma.me/" />
+    <meta property="og:image" content="https://caravaggio.qayma.me/assets/logo.jpg" />
+    <meta property="og:locale" content="ar_EG" />
+    <link rel="icon" href="./assets/logo.jpg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Alexandria:wght@700;800;900&family=Cairo:wght@500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="table-banner" class="table-banner hidden"></div>
+
+    <header id="header-root" class="site-header"></header>
+
+    <div class="sticky-controls">
+      <div class="container">
+        <div class="search-row">
+          <div class="search-box">
+            <input
+              type="text"
+              id="search-input"
+              placeholder="ابحث في كاراڤاچيو.. (سبانيش لاتيه، فرابيه، دوناتس، مولتن، ميلك شيك...)"
+            />
+          </div>
+          <button type="button" id="btn-popular" class="btn-popular">
+            الأكثر طلباً
+          </button>
+        </div>
+        <nav id="cat-strip" class="cat-strip" aria-label="أقسام المنيو"></nav>
+      </div>
+    </div>
+
+    <main id="menu-root" class="container menu-main"></main>
+
+    <footer id="footer-root" class="site-footer"></footer>
+
+    <div id="floating-cart-root" class="floating-cart hidden"></div>
+
+    <div id="modals-root"></div>
+
+    <script src="./data.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
