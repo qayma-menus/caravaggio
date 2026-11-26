@@ -1,10 +1,9 @@
 /**
  * محرك المنيو التفاعلي والطلبات عبر واتساب (Static / Zero-Backend)
- * يدعم:
- * - مزامنة لحظية للأسعار، التوفر، والأصناف الموسمية من Google Sheets CSV (اختياري عبر googleSheetCsvUrl)
- * - تعدد الفروع بأرقام واتساب منفصلة لكل فرع (branches)
- * - التحكم في طرق الطلب المتاحة (delivery / takeaway / dine_in)
- * - أصناف "السعر حسب الشكل/الطلب" (priceOnRequest) والأصناف غير المتاحة مؤقتاً (soldOut)
+ * يدعم معماريات بصرية متعددة لكل مطعم:
+ * - default: الكلاسيكي / الباتيسيري / البوستر (سيخ و رغيف، حلواني لاروز)
+ * - ledger: لوحة المنيو المصري التراثي المزدوج (بروست ومشويات القشيط)
+ * - lounge: واجهة الكافيه الشبابي الليلي (كاراڤاچيو Caravaggio)
  */
 (function () {
   "use strict";
@@ -13,6 +12,7 @@
   var C = window.CREDITS_CONFIG || {};
   if (!R) return;
 
+  var LAYOUT = R.layout || "default";
   var CART_KEY = "qayma_cart_" + R.slug;
   var CUST_KEY = "qayma_customer_v1";
   var BRANCH_KEY = "qayma_branch_" + R.slug;
@@ -61,6 +61,20 @@
     var num = Number(n);
     var v = Number.isInteger(num) ? String(num) : num.toFixed(1);
     return v + " ج.م";
+  }
+
+  function fmtNum(n) {
+    var num = Number(n);
+    return Number.isInteger(num) ? String(num) : num.toFixed(1);
+  }
+
+  function splitBilingual(raw) {
+    var s = String(raw || "");
+    var parts = s.split(/\s*[•·|]\s*/);
+    if (parts.length >= 2) {
+      return { ar: parts[0].trim(), en: parts.slice(1).join(" · ").trim() };
+    }
+    return { ar: s.trim(), en: "" };
   }
 
   function activeBranch() {
@@ -239,7 +253,6 @@
         if (badge !== undefined && badge !== "") target.badge = badge;
         if (desc !== undefined && desc !== "") target.description = desc;
       } else if (name && !isHidden) {
-        // صنف جديد أو موسمي أضافه صاحب المطعم مباشرة في الشيت!
         var catId = (idxCatId >= 0 && cols[idxCatId]) || "seasonal-sheet";
         var catName =
           (idxCatName >= 0 && cols[idxCatName]) || "عروض وأصناف الموسم";
@@ -287,9 +300,7 @@
         return res.ok ? res.text() : Promise.reject();
       })
       .then(applyGoogleSheetCsv)
-      .catch(function () {
-        // في حالة عدم توفر إنترنت يستمر العمل بالبيانات المحلية بسلاسة
-      });
+      .catch(function () {});
   }
 
   function findItem(itemId) {
@@ -502,141 +513,7 @@
     return "";
   }
 
-  function renderHeaderAndFooter() {
-    var tableBanner = document.getElementById("table-banner");
-    if (state.detectedTable) {
-      tableBanner.textContent =
-        "أهلاً بيك في صالة " +
-        R.name +
-        " — تم تحديد ترابيزة رقم (" +
-        state.detectedTable +
-        ") تلقائياً";
-      tableBanner.classList.remove("hidden");
-    }
-
-    var br = activeBranch();
-    var mapsUrl =
-      "https://www.google.com/maps/search/?api=1&query=" +
-      encodeURIComponent(br.mapsQuery || br.address || R.address);
-
-    var branchSelectorHtml = "";
-    if (branches && branches.length > 1) {
-      branchSelectorHtml =
-        '<div class="branch-switcher">' +
-        '  <span class="branch-switcher-label">اختر الفرع الأقرب لك:</span>' +
-        '  <div class="branch-pills">' +
-        branches
-          .map(function (b) {
-            var active = b.id === br.id ? " active" : "";
-            return (
-              '<button type="button" class="branch-pill' +
-              active +
-              '" data-branch-select="' +
-              esc(b.id) +
-              '">' +
-              esc(b.name) +
-              "</button>"
-            );
-          })
-          .join("") +
-        "  </div>" +
-        "</div>";
-    }
-
-    var coverHtml = R.coverImage
-      ? '<div class="cover-wrap"><img src="' +
-        esc(R.coverImage) +
-        '" alt="' +
-        esc(R.name) +
-        '"></div>'
-      : '<div class="cover-ornament"></div>';
-
-    var contactBtns = "";
-    if (br.phone) {
-      contactBtns +=
-        '<a class="btn-call" href="tel:' +
-        esc(br.phone) +
-        '"><span dir="ltr">' +
-        esc(br.phone) +
-        "</span></a>";
-    }
-    if (br.whatsapp) {
-      contactBtns +=
-        '<a class="btn-wa-top" href="https://wa.me/' +
-        esc(br.whatsapp) +
-        '" target="_blank" rel="noopener">' +
-        (branches && branches.length > 1 ? "واتساب الفرع" : "واتساب مباشر") +
-        "</a>";
-    }
-
-    var logosHtml = R.secondaryLogoImage
-      ? '<div class="identity-logos-wrap"><img class="identity-logo" src="' +
-        esc(R.logoImage) +
-        '" alt="' +
-        esc(R.name) +
-        '"><img class="identity-logo" src="' +
-        esc(R.secondaryLogoImage) +
-        '" alt="' +
-        esc(R.name) +
-        '"></div>'
-      : '<img class="identity-logo" src="' +
-        esc(R.logoImage) +
-        '" alt="' +
-        esc(R.name) +
-        '">';
-
-    document.getElementById("header-root").innerHTML =
-      '<div class="container">' +
-      '  <div class="header-topbar">' +
-      '    <span class="status-pill"><span class="status-dot"></span>مفتوح للطلبات الآن</span>' +
-      '    <div style="display:flex;gap:8px;align-items:center">' +
-      (R.instagramUrl
-        ? '<a href="' +
-          esc(R.instagramUrl) +
-          '" target="_blank" rel="noopener" class="btn-outline-paper">إنستجرام</a>'
-        : "") +
-      (R.facebookUrl
-        ? '<a href="' +
-          esc(R.facebookUrl) +
-          '" target="_blank" rel="noopener" class="btn-outline-paper">فيسبوك</a>'
-        : "") +
-      (R.menuFlyerImages && R.menuFlyerImages.length
-        ? '<button type="button" id="btn-open-flyer" class="btn-outline-paper">صور المنيو الأصلي</button>'
-        : "") +
-      "    </div>" +
-      "  </div>" +
-      coverHtml +
-      '  <div class="identity-card">' +
-      '    <div class="identity-top">' +
-      logosHtml +
-      "      <div>" +
-      '        <div class="identity-title-row">' +
-      '          <h1 class="identity-name">' +
-      esc(R.name) +
-      "</h1>" +
-      '          <span class="identity-tagline">' +
-      esc(R.tagline) +
-      "</span>" +
-      "        </div>" +
-      '        <p class="identity-intro">' +
-      esc(R.shortIntro) +
-      "</p>" +
-      "      </div>" +
-      "    </div>" +
-      branchSelectorHtml +
-      '    <div class="identity-contact">' +
-      '      <a class="address-link" href="' +
-      esc(mapsUrl) +
-      '" target="_blank" rel="noopener">العنوان: ' +
-      esc(br.address) +
-      "</a>" +
-      '      <div class="contact-actions">' +
-      contactBtns +
-      "      </div>" +
-      "    </div>" +
-      "  </div>" +
-      "</div>";
-
+  function buildFooterHtml() {
     var creditHref = C.whatsapp
       ? "https://wa.me/" +
         C.whatsapp +
@@ -663,7 +540,7 @@
           .join("  •  ")
       : R.address + (R.phone ? " — " + R.phone : "");
 
-    document.getElementById("footer-root").innerHTML =
+    return (
       '<div class="container">' +
       '  <div class="restaurant-foot-card">' +
       "    <h3>" +
@@ -675,9 +552,7 @@
       esc(allBranchesSummary) +
       "</p>" +
       (R.branchesNotice
-        ? '<p style="font-size:12px;margin-top:6px;opacity:0.85">' +
-          esc(R.branchesNotice) +
-          "</p>"
+        ? '<p class="foot-notice">' + esc(R.branchesNotice) + "</p>"
         : "") +
       "  </div>" +
       '  <div class="credits-bar">' +
@@ -694,8 +569,11 @@
       '" target="_blank" rel="noopener">اطلب منيو لمشروعك</a>' +
       "    </div>" +
       "  </div>" +
-      "</div>";
+      "</div>"
+    );
+  }
 
+  function bindHeaderCommonEvents() {
     var flyerBtn = document.getElementById("btn-open-flyer");
     if (flyerBtn) {
       flyerBtn.addEventListener("click", function () {
@@ -715,6 +593,346 @@
           renderHeaderAndFooter();
         });
       });
+  }
+
+  function renderLedgerHeader(br, mapsUrl) {
+    var tilesHtml = (branches || [])
+      .map(function (b) {
+        var isAct = b.id === br.id;
+        var isGrill = b.id.indexOf("grill") >= 0;
+        return (
+          '<button type="button" class="dispatch-tile' +
+          (isAct ? " active" : "") +
+          (isGrill ? " dept-grill" : " dept-broast") +
+          '" data-branch-select="' +
+          esc(b.id) +
+          '">' +
+          '  <div class="dispatch-tile-top">' +
+          '    <span class="dispatch-city">' +
+          esc(b.cityTag || "") +
+          "</span>" +
+          '    <span class="dispatch-indicator"></span>' +
+          "  </div>" +
+          '  <div class="dispatch-dept">' +
+          esc(b.deptTag || b.name) +
+          "</div>" +
+          '  <div class="dispatch-phone" dir="ltr">' +
+          esc(b.phone || "") +
+          "</div>" +
+          "</button>"
+        );
+      })
+      .join("");
+
+    document.getElementById("header-root").innerHTML =
+      '<div class="kababgy-trim" aria-hidden="true"></div>' +
+      '<div class="container ledger-hero-inner">' +
+      '  <div class="ledger-topbar">' +
+      '    <span class="ledger-heritage-seal">★ خبرة ٥٠ عاماً • ثقة بلا حدود ★</span>' +
+      '    <div class="ledger-top-links">' +
+      (R.facebookUrl
+        ? '<a href="' +
+          esc(R.facebookUrl) +
+          '" target="_blank" rel="noopener" class="ledger-top-btn">فيسبوك</a>'
+        : "") +
+      (R.menuFlyerImages && R.menuFlyerImages.length
+        ? '<button type="button" id="btn-open-flyer" class="ledger-top-btn">المنيو الورقي الأصلي</button>'
+        : "") +
+      "    </div>" +
+      "  </div>" +
+      '  <div class="ledger-masthead">' +
+      '    <div class="ledger-crests">' +
+      (R.secondaryLogoImage
+        ? '<img class="ledger-crest" src="' +
+          esc(R.secondaryLogoImage) +
+          '" alt="مشويات القشيط">'
+        : "") +
+      '      <img class="ledger-crest" src="' +
+      esc(R.logoImage) +
+      '" alt="بروست القشيط">' +
+      "    </div>" +
+      '    <div class="ledger-title-block">' +
+      '      <h1 class="ledger-title">' +
+      esc(R.name) +
+      "</h1>" +
+      '      <p class="ledger-sub">' +
+      esc(R.shortIntro) +
+      "</p>" +
+      "    </div>" +
+      "  </div>" +
+      (R.coverImage
+        ? '<div class="ledger-cover-frame"><img src="' +
+          esc(R.coverImage) +
+          '" alt="' +
+          esc(R.name) +
+          '"></div>'
+        : "") +
+      '  <div class="dispatch-panel">' +
+      '    <div class="dispatch-panel-head">' +
+      '      <span>خطوط الطلب المباشر — اختر الفرع والقسم:</span>' +
+      '      <span class="dispatch-live"><span class="status-dot"></span>متاح الآن</span>' +
+      "    </div>" +
+      '    <div class="dispatch-grid">' +
+      tilesHtml +
+      "    </div>" +
+      '    <div class="dispatch-bar">' +
+      '      <a class="dispatch-address" href="' +
+      esc(mapsUrl) +
+      '" target="_blank" rel="noopener">العنوان: ' +
+      esc(br.address) +
+      "</a>" +
+      '      <div class="dispatch-cta-pair">' +
+      (br.phone
+        ? '<a class="ledger-btn-call" href="tel:' +
+          esc(br.phone) +
+          '"><span dir="ltr">' +
+          esc(br.phone) +
+          "</span></a>"
+        : "") +
+      (br.whatsapp
+        ? '<a class="ledger-btn-wa" href="https://wa.me/' +
+          esc(br.whatsapp) +
+          '" target="_blank" rel="noopener">واتساب المباشر</a>'
+        : "") +
+      "      </div>" +
+      "    </div>" +
+      "  </div>" +
+      "</div>";
+  }
+
+  function renderLoungeHeader(br, mapsUrl) {
+    var cupSvg =
+      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>';
+
+    var stamps = "";
+    for (var s = 1; s <= 6; s++) {
+      stamps += '<span class="stamp-cup" aria-hidden="true">' + cupSvg + "</span>";
+    }
+
+    var branchSegs = (branches || [])
+      .map(function (b) {
+        return (
+          '<button type="button" class="lounge-seg-btn' +
+          (b.id === br.id ? " active" : "") +
+          '" data-branch-select="' +
+          esc(b.id) +
+          '">' +
+          esc(b.name) +
+          "</button>"
+        );
+      })
+      .join("");
+
+    document.getElementById("header-root").innerHTML =
+      '<div class="container lounge-hero-inner">' +
+      '  <div class="lounge-topbar">' +
+      '    <div class="lounge-branch-seg">' +
+      branchSegs +
+      "    </div>" +
+      '    <div class="lounge-top-actions">' +
+      (R.instagramUrl
+        ? '<a href="' +
+          esc(R.instagramUrl) +
+          '" target="_blank" rel="noopener" class="lounge-ghost-btn" dir="ltr">@IG</a>'
+        : "") +
+      (R.menuFlyerImages && R.menuFlyerImages.length
+        ? '<button type="button" id="btn-open-flyer" class="lounge-ghost-btn">المنيو المطبوع</button>'
+        : "") +
+      "    </div>" +
+      "  </div>" +
+      '  <div class="lounge-stage">' +
+      '    <div class="lounge-medallion-wrap">' +
+      '      <div class="lounge-medallion-ring">' +
+      '        <img class="lounge-medallion" src="' +
+      esc(R.logoImage) +
+      '" alt="Caravaggio Coffee">' +
+      "      </div>" +
+      '      <span class="lounge-live-pill"><span class="lounge-dot"></span>مفتوح الآن</span>' +
+      "    </div>" +
+      '    <p class="lounge-en-kicker" dir="ltr">CARAVAGGIO COFFEE &amp; DESSERTS</p>' +
+      '    <h1 class="lounge-ar-title">كاراڤاچيو كافيه وحلواني</h1>' +
+      '    <p class="lounge-intro">' +
+      esc(R.shortIntro) +
+      "</p>" +
+      '    <div class="lounge-branch-card">' +
+      '      <a class="lounge-addr" href="' +
+      esc(mapsUrl) +
+      '" target="_blank" rel="noopener">' +
+      esc(br.address) +
+      "</a>" +
+      '      <div class="lounge-quick-btns">' +
+      (br.whatsapp
+        ? '<a class="lounge-wa-btn" href="https://wa.me/' +
+          esc(br.whatsapp) +
+          '" target="_blank" rel="noopener">واتساب الكافيه</a>'
+        : "") +
+      (br.phone
+        ? '<a class="lounge-call-btn" href="tel:' +
+          esc(br.phone) +
+          '" dir="ltr">' +
+          esc(br.phone) +
+          "</a>"
+        : "") +
+      "      </div>" +
+      "    </div>" +
+      '    <div class="loyalty-strip">' +
+      '      <div class="loyalty-head">' +
+      '        <span class="loyalty-title">عرض الولاء الدائم في كاراڤاچيو</span>' +
+      '        <span class="loyalty-en" dir="ltr">6 DRINKS = 1 FREE</span>' +
+      "      </div>" +
+      '      <div class="loyalty-stamps">' +
+      stamps +
+      '        <span class="stamp-arrow">←</span>' +
+      '        <span class="stamp-free">السابع مجاناً</span>' +
+      "      </div>" +
+      "    </div>" +
+      "  </div>" +
+      "</div>";
+  }
+
+  function renderHeaderAndFooter() {
+    var tableBanner = document.getElementById("table-banner");
+    if (state.detectedTable) {
+      tableBanner.textContent =
+        "أهلاً بيك في صالة " +
+        R.name +
+        " — تم تحديد ترابيزة رقم (" +
+        state.detectedTable +
+        ") تلقائياً";
+      tableBanner.classList.remove("hidden");
+    }
+
+    var br = activeBranch();
+    var mapsUrl =
+      "https://www.google.com/maps/search/?api=1&query=" +
+      encodeURIComponent(br.mapsQuery || br.address || R.address);
+
+    if (LAYOUT === "ledger") {
+      renderLedgerHeader(br, mapsUrl);
+    } else if (LAYOUT === "lounge") {
+      renderLoungeHeader(br, mapsUrl);
+    } else {
+      var branchSelectorHtml = "";
+      if (branches && branches.length > 1) {
+        branchSelectorHtml =
+          '<div class="branch-switcher">' +
+          '  <span class="branch-switcher-label">اختر الفرع الأقرب لك:</span>' +
+          '  <div class="branch-pills">' +
+          branches
+            .map(function (b) {
+              var active = b.id === br.id ? " active" : "";
+              return (
+                '<button type="button" class="branch-pill' +
+                active +
+                '" data-branch-select="' +
+                esc(b.id) +
+                '">' +
+                esc(b.name) +
+                "</button>"
+              );
+            })
+            .join("") +
+          "  </div>" +
+          "</div>";
+      }
+
+      var coverHtml = R.coverImage
+        ? '<div class="cover-wrap"><img src="' +
+          esc(R.coverImage) +
+          '" alt="' +
+          esc(R.name) +
+          '"></div>'
+        : '<div class="cover-ornament"></div>';
+
+      var contactBtns = "";
+      if (br.phone) {
+        contactBtns +=
+          '<a class="btn-call" href="tel:' +
+          esc(br.phone) +
+          '"><span dir="ltr">' +
+          esc(br.phone) +
+          "</span></a>";
+      }
+      if (br.whatsapp) {
+        contactBtns +=
+          '<a class="btn-wa-top" href="https://wa.me/' +
+          esc(br.whatsapp) +
+          '" target="_blank" rel="noopener">' +
+          (branches && branches.length > 1 ? "واتساب الفرع" : "واتساب مباشر") +
+          "</a>";
+      }
+
+      var logosHtml = R.secondaryLogoImage
+        ? '<div class="identity-logos-wrap"><img class="identity-logo" src="' +
+          esc(R.logoImage) +
+          '" alt="' +
+          esc(R.name) +
+          '"><img class="identity-logo" src="' +
+          esc(R.secondaryLogoImage) +
+          '" alt="' +
+          esc(R.name) +
+          '"></div>'
+        : '<img class="identity-logo" src="' +
+          esc(R.logoImage) +
+          '" alt="' +
+          esc(R.name) +
+          '">';
+
+      document.getElementById("header-root").innerHTML =
+        '<div class="container">' +
+        '  <div class="header-topbar">' +
+        '    <span class="status-pill"><span class="status-dot"></span>مفتوح للطلبات الآن</span>' +
+        '    <div style="display:flex;gap:8px;align-items:center">' +
+        (R.instagramUrl
+          ? '<a href="' +
+            esc(R.instagramUrl) +
+            '" target="_blank" rel="noopener" class="btn-outline-paper">إنستجرام</a>'
+          : "") +
+        (R.facebookUrl
+          ? '<a href="' +
+            esc(R.facebookUrl) +
+            '" target="_blank" rel="noopener" class="btn-outline-paper">فيسبوك</a>'
+          : "") +
+        (R.menuFlyerImages && R.menuFlyerImages.length
+          ? '<button type="button" id="btn-open-flyer" class="btn-outline-paper">صور المنيو الأصلي</button>'
+          : "") +
+        "    </div>" +
+        "  </div>" +
+        coverHtml +
+        '  <div class="identity-card">' +
+        '    <div class="identity-top">' +
+        logosHtml +
+        "      <div>" +
+        '        <div class="identity-title-row">' +
+        '          <h1 class="identity-name">' +
+        esc(R.name) +
+        "</h1>" +
+        '          <span class="identity-tagline">' +
+        esc(R.tagline) +
+        "</span>" +
+        "        </div>" +
+        '        <p class="identity-intro">' +
+        esc(R.shortIntro) +
+        "</p>" +
+        "      </div>" +
+        "    </div>" +
+        branchSelectorHtml +
+        '    <div class="identity-contact">' +
+        '      <a class="address-link" href="' +
+        esc(mapsUrl) +
+        '" target="_blank" rel="noopener">العنوان: ' +
+        esc(br.address) +
+        "</a>" +
+        '      <div class="contact-actions">' +
+        contactBtns +
+        "      </div>" +
+        "    </div>" +
+        "  </div>" +
+        "</div>";
+    }
+
+    document.getElementById("footer-root").innerHTML = buildFooterHtml();
+    bindHeaderCommonEvents();
   }
 
   function catVisibleInGroup(cat) {
@@ -752,8 +970,23 @@
           })
         );
       })
-      .map(function (cat) {
+      .map(function (cat, idx) {
         var cls = "cat-tab" + (state.activeCat === cat.id ? " active" : "");
+        if (LAYOUT === "lounge") {
+          var bi = splitBilingual(cat.name);
+          var num = idx < 9 ? "0" + (idx + 1) : String(idx + 1);
+          return (
+            '<button type="button" class="' +
+            cls +
+            '" data-cat="' +
+            esc(cat.id) +
+            '"><span class="cat-tab-idx" dir="ltr">' +
+            num +
+            "</span>" +
+            esc(bi.ar) +
+            "</button>"
+          );
+        }
         return (
           '<button type="button" class="' +
           cls +
@@ -770,10 +1003,421 @@
     popBtn.className = "btn-popular" + (state.onlyPopular ? " active" : "");
   }
 
+  function renderLedgerSection(cat, items) {
+    var deptClass =
+      cat.group === "broast"
+        ? " sheet-broast"
+        : cat.tone === "primary"
+        ? " sheet-crimson"
+        : " sheet-grill";
+
+    var rowsHtml = items
+      .map(function (it) {
+        var inQty = itemQtyInCart(it.id);
+        var isAdded = state.justAddedId === it.id;
+        var isSoldOut = !!it.soldOut;
+
+        var sizesHtml = "";
+        if (it.variants && it.variants.length && !isSoldOut) {
+          sizesHtml =
+            '<div class="ledger-sizes">' +
+            it.variants
+              .map(function (v) {
+                var shortLbl = v.label
+                  .replace(/\s*\(.*?\)\s*/g, "")
+                  .trim();
+                return (
+                  '<button type="button" class="ledger-size-btn" data-variant-item="' +
+                  esc(it.id) +
+                  '" data-variant-id="' +
+                  esc(v.id) +
+                  '">' +
+                  '<span class="ls-lbl">' +
+                  esc(shortLbl) +
+                  "</span>" +
+                  '<span class="ls-val">' +
+                  (v.priceOnRequest ? "حسب الطلب" : v.price + " ج") +
+                  "</span>" +
+                  "</button>"
+                );
+              })
+              .join("") +
+            "</div>";
+        }
+
+        var priceTag = it.priceOnRequest
+          ? '<span class="ledger-price on-req">' +
+            esc(it.priceLabel || "حسب الطلب") +
+            "</span>"
+          : '<span class="ledger-price">' +
+            fmtNum(it.price) +
+            ' <small>ج.م</small></span>';
+
+        var actionLabel = isSoldOut
+          ? "نفد"
+          : isAdded
+          ? "✓"
+          : inQty > 0
+          ? String(inQty)
+          : "+";
+
+        return (
+          '<article class="ledger-row' +
+          (inQty > 0 ? " in-cart" : "") +
+          (isSoldOut ? " sold-out" : "") +
+          '" ' +
+          (isSoldOut ? "" : 'data-open-item="' + esc(it.id) + '"') +
+          ">" +
+          '  <div class="ledger-info">' +
+          '    <div class="ledger-name-line">' +
+          '      <h3 class="ledger-item-name">' +
+          esc(it.name) +
+          "</h3>" +
+          (it.badge
+            ? '<span class="ledger-badge">' + esc(it.badge) + "</span>"
+            : it.popular
+            ? '<span class="ledger-star">★ مميز</span>'
+            : "") +
+          "    </div>" +
+          (it.description
+            ? '<p class="ledger-desc">' + esc(it.description) + "</p>"
+            : "") +
+          sizesHtml +
+          "  </div>" +
+          '  <div class="ledger-action">' +
+          priceTag +
+          '    <button type="button" ' +
+          (isSoldOut ? "disabled " : "") +
+          'class="ledger-add-btn' +
+          (isAdded ? " added" : "") +
+          (inQty > 0 ? " has-qty" : "") +
+          '" data-quick-add="' +
+          esc(it.id) +
+          '" aria-label="إضافة ' +
+          esc(it.name) +
+          '">' +
+          actionLabel +
+          "</button>" +
+          "  </div>" +
+          "</article>"
+        );
+      })
+      .join("");
+
+    return (
+      '<section class="cat-section ledger-sheet' +
+      deptClass +
+      '" id="cat-' +
+      esc(cat.id) +
+      '">' +
+      '  <div class="ledger-sheet-head">' +
+      '    <div class="ledger-head-main">' +
+      '      <span class="sheet-star" aria-hidden="true">★</span>' +
+      '      <div>' +
+      '        <h2 class="ledger-cat-title">' +
+      esc(cat.name) +
+      "</h2>" +
+      (cat.subtitle
+        ? '<p class="ledger-cat-sub">' + esc(cat.subtitle) + "</p>"
+        : "") +
+      "      </div>" +
+      "    </div>" +
+      '    <span class="ledger-cat-count">' +
+      items.length +
+      " صنف</span>" +
+      "  </div>" +
+      '  <div class="ledger-rows">' +
+      rowsHtml +
+      "  </div>" +
+      "</section>"
+    );
+  }
+
+  function renderLoungeSection(cat, items, secIndex) {
+    var catBi = splitBilingual(cat.name);
+    var numStr = secIndex < 9 ? "0" + (secIndex + 1) : String(secIndex + 1);
+
+    var cardsHtml = items
+      .map(function (it) {
+        var inQty = itemQtyInCart(it.id);
+        var isAdded = state.justAddedId === it.id;
+        var isSoldOut = !!it.soldOut;
+        var bi = splitBilingual(it.name);
+
+        var variantsHtml = "";
+        if (it.variants && it.variants.length && !isSoldOut) {
+          variantsHtml =
+            '<div class="lounge-variants">' +
+            it.variants
+              .map(function (v) {
+                return (
+                  '<button type="button" class="lounge-var-pill" data-variant-item="' +
+                  esc(it.id) +
+                  '" data-variant-id="' +
+                  esc(v.id) +
+                  '">' +
+                  esc(v.label) +
+                  " · <strong>" +
+                  (v.priceOnRequest ? "عرض" : v.price + " ج") +
+                  "</strong></button>"
+                );
+              })
+              .join("") +
+            "</div>";
+        }
+
+        var priceBlock = it.priceOnRequest
+          ? '<div class="lounge-price-req">' +
+            esc(it.priceLabel || "حسب العرض") +
+            "</div>"
+          : '<div class="lounge-price-stack">' +
+            '  <span class="lp-num" dir="ltr">' +
+            fmtNum(it.price) +
+            "</span>" +
+            '  <span class="lp-cur">ج.م</span>' +
+            "</div>";
+
+        var btnInner = isSoldOut
+          ? "—"
+          : isAdded
+          ? "✓"
+          : inQty > 0
+          ? String(inQty)
+          : "+";
+
+        return (
+          '<article class="lounge-card' +
+          (inQty > 0 ? " in-cart" : "") +
+          (isSoldOut ? " sold-out" : "") +
+          (it.priceOnRequest ? " seasonal-highlight" : "") +
+          '" ' +
+          (isSoldOut ? "" : 'data-open-item="' + esc(it.id) + '"') +
+          ">" +
+          '  <div class="lounge-card-main">' +
+          '    <div class="lounge-card-meta">' +
+          (bi.en
+            ? '<span class="lounge-item-en" dir="ltr">' + esc(bi.en) + "</span>"
+            : '<span class="lounge-item-en" dir="ltr">CARAVAGGIO</span>') +
+          (it.badge
+            ? '<span class="lounge-badge">' + esc(it.badge) + "</span>"
+            : "") +
+          "    </div>" +
+          '    <h3 class="lounge-item-ar">' +
+          esc(bi.ar) +
+          "</h3>" +
+          (it.description
+            ? '<p class="lounge-item-desc">' + esc(it.description) + "</p>"
+            : "") +
+          variantsHtml +
+          "  </div>" +
+          '  <div class="lounge-card-side">' +
+          priceBlock +
+          '    <button type="button" ' +
+          (isSoldOut ? "disabled " : "") +
+          'class="lounge-circle-add' +
+          (isAdded ? " added" : "") +
+          (inQty > 0 ? " has-qty" : "") +
+          '" data-quick-add="' +
+          esc(it.id) +
+          '" aria-label="إضافة ' +
+          esc(bi.ar) +
+          '">' +
+          btnInner +
+          "</button>" +
+          "  </div>" +
+          "</article>"
+        );
+      })
+      .join("");
+
+    return (
+      '<section class="cat-section lounge-section" id="cat-' +
+      esc(cat.id) +
+      '">' +
+      '  <div class="lounge-cat-head">' +
+      '    <span class="lounge-cat-num" dir="ltr">' +
+      numStr +
+      "</span>" +
+      '    <div class="lounge-cat-titles">' +
+      (catBi.en
+        ? '<span class="lounge-cat-en" dir="ltr">' + esc(catBi.en) + "</span>"
+        : "") +
+      '      <h2 class="lounge-cat-ar">' +
+      esc(catBi.ar) +
+      "</h2>" +
+      (cat.subtitle
+        ? '<p class="lounge-cat-sub">' + esc(cat.subtitle) + "</p>"
+        : "") +
+      "    </div>" +
+      '    <span class="lounge-cat-total">' +
+      items.length +
+      "</span>" +
+      "  </div>" +
+      '  <div class="lounge-grid">' +
+      cardsHtml +
+      "  </div>" +
+      "</section>"
+    );
+  }
+
+  function renderDefaultSection(cat, items) {
+    var toneCls =
+      cat.tone === "primary"
+        ? " tone-primary"
+        : cat.tone === "accent"
+        ? " tone-accent"
+        : "";
+
+    return (
+      '<section class="cat-section" id="cat-' +
+      esc(cat.id) +
+      '">' +
+      '  <div class="cat-banner' +
+      toneCls +
+      '">' +
+      "    <div>" +
+      '      <div class="cat-title-wrap">' +
+      '        <h2 class="cat-title">' +
+      esc(cat.name) +
+      "</h2>" +
+      '        <span class="cat-count">' +
+      items.length +
+      " أصناف</span>" +
+      "      </div>" +
+      (cat.subtitle
+        ? '<p class="cat-subtitle">' + esc(cat.subtitle) + "</p>"
+        : "") +
+      "    </div>" +
+      (cat.bannerImage
+        ? '<img class="cat-banner-img" src="' +
+          esc(cat.bannerImage) +
+          '" alt="' +
+          esc(cat.name) +
+          '">'
+        : "") +
+      "  </div>" +
+      '  <div class="items-grid">' +
+      items
+        .map(function (it) {
+          var inQty = itemQtyInCart(it.id);
+          var isAdded = state.justAddedId === it.id;
+          var isSoldOut = !!it.soldOut;
+          var hasOpts =
+            (it.variants && it.variants.length) ||
+            (it.choiceGroups && it.choiceGroups.length) ||
+            (it.addons && it.addons.length) ||
+            it.priceOnRequest;
+
+          var variantsHtml = "";
+          if (it.variants && it.variants.length && !isSoldOut) {
+            variantsHtml =
+              '<div class="variant-chips">' +
+              it.variants
+                .map(function (v) {
+                  return (
+                    '<button type="button" class="variant-chip" data-variant-item="' +
+                    esc(it.id) +
+                    '" data-variant-id="' +
+                    esc(v.id) +
+                    '">' +
+                    esc(v.label) +
+                    ": " +
+                    (v.priceOnRequest ? "حسب الشكل" : v.price + " ج") +
+                    "</button>"
+                  );
+                })
+                .join("") +
+              "</div>";
+          }
+
+          var priceDisplay = it.priceOnRequest
+            ? esc(it.priceLabel || "حسب الشكل")
+            : fmtPrice(it.price);
+
+          var btnText = isSoldOut
+            ? "غير متاح اليوم"
+            : isAdded
+            ? "تمت الإضافة"
+            : it.priceOnRequest
+            ? "+ اطلب تسعير"
+            : it.variants && it.variants.length
+            ? "+ اختر المقاس"
+            : "+ أضف" +
+              (inQty > 0
+                ? ' <span class="qty-pill">' + inQty + "</span>"
+                : "");
+
+          return (
+            '<article class="item-card' +
+            (inQty > 0 ? " in-cart" : "") +
+            (isSoldOut ? " sold-out" : "") +
+            '" ' +
+            (isSoldOut ? "" : 'data-open-item="' + esc(it.id) + '"') +
+            ">" +
+            '  <div class="item-body">' +
+            "    <div>" +
+            '      <div class="item-head">' +
+            '        <h3 class="item-name">' +
+            esc(it.name) +
+            "</h3>" +
+            '        <span class="price-leader"></span>' +
+            '        <span class="item-price">' +
+            priceDisplay +
+            "</span>" +
+            "      </div>" +
+            (it.badge
+              ? '<span class="item-badge">' + esc(it.badge) + "</span>"
+              : "") +
+            (it.description
+              ? '<p class="item-desc">' + esc(it.description) + "</p>"
+              : "") +
+            variantsHtml +
+            "    </div>" +
+            '    <div class="item-foot">' +
+            '      <span class="item-hint">' +
+            (isSoldOut
+              ? "نفد مؤقتاً"
+              : it.priceOnRequest
+              ? esc(it.notePlaceholder || "اكتب الشكل أو الطلب في الملاحظة")
+              : it.unitLabel
+              ? "السعر " + esc(it.unitLabel)
+              : hasOpts
+              ? "اضغط للاختيار أو كتابة ملاحظة"
+              : "جاهز للإضافة") +
+            "</span>" +
+            '      <button type="button" ' +
+            (isSoldOut ? "disabled " : "") +
+            'class="btn-add' +
+            (isAdded ? " added" : "") +
+            (isSoldOut ? " disabled" : "") +
+            '" data-quick-add="' +
+            esc(it.id) +
+            '">' +
+            btnText +
+            "</button>" +
+            "    </div>" +
+            "  </div>" +
+            (it.image
+              ? '<div class="item-thumb"><img src="' +
+                esc(it.image) +
+                '" alt="' +
+                esc(it.name) +
+                '"></div>'
+              : "") +
+            "</article>"
+          );
+        })
+        .join("") +
+      "  </div>" +
+      "</section>"
+    );
+  }
+
   function renderMenuAndBar() {
     renderTabs();
     var q = state.search.trim().toLowerCase();
     var html = [];
+    var visIdx = 0;
 
     R.categories.forEach(function (cat) {
       if (!catVisibleInGroup(cat)) return;
@@ -790,164 +1434,22 @@
 
       if (!items.length) return;
 
-      var toneCls =
-        cat.tone === "primary"
-          ? " tone-primary"
-          : cat.tone === "accent"
-          ? " tone-accent"
-          : "";
-
-      html.push(
-        '<section class="cat-section" id="cat-' +
-          esc(cat.id) +
-          '">' +
-          '  <div class="cat-banner' +
-          toneCls +
-          '">' +
-          "    <div>" +
-          '      <div class="cat-title-wrap">' +
-          '        <h2 class="cat-title">' +
-          esc(cat.name) +
-          "</h2>" +
-          '        <span class="cat-count">' +
-          items.length +
-          " أصناف</span>" +
-          "      </div>" +
-          (cat.subtitle
-            ? '<p class="cat-subtitle">' + esc(cat.subtitle) + "</p>"
-            : "") +
-          "    </div>" +
-          (cat.bannerImage
-            ? '<img class="cat-banner-img" src="' +
-              esc(cat.bannerImage) +
-              '" alt="' +
-              esc(cat.name) +
-              '">'
-            : "") +
-          "  </div>" +
-          '  <div class="items-grid">' +
-          items
-            .map(function (it) {
-              var inQty = itemQtyInCart(it.id);
-              var isAdded = state.justAddedId === it.id;
-              var isSoldOut = !!it.soldOut;
-              var hasOpts =
-                (it.variants && it.variants.length) ||
-                (it.choiceGroups && it.choiceGroups.length) ||
-                (it.addons && it.addons.length) ||
-                it.priceOnRequest;
-
-              var variantsHtml = "";
-              if (it.variants && it.variants.length && !isSoldOut) {
-                variantsHtml =
-                  '<div class="variant-chips">' +
-                  it.variants
-                    .map(function (v) {
-                      return (
-                        '<button type="button" class="variant-chip" data-variant-item="' +
-                        esc(it.id) +
-                        '" data-variant-id="' +
-                        esc(v.id) +
-                        '">' +
-                        esc(v.label) +
-                        ": " +
-                        (v.priceOnRequest ? "حسب الشكل" : v.price + " ج") +
-                        "</button>"
-                      );
-                    })
-                    .join("") +
-                  "</div>";
-              }
-
-              var priceDisplay = it.priceOnRequest
-                ? esc(it.priceLabel || "حسب الشكل")
-                : fmtPrice(it.price);
-
-              var btnText = isSoldOut
-                ? "غير متاح اليوم"
-                : isAdded
-                ? "تمت الإضافة"
-                : it.priceOnRequest
-                ? "+ اطلب تسعير"
-                : it.variants && it.variants.length
-                ? "+ اختر المقاس"
-                : "+ أضف" +
-                  (inQty > 0
-                    ? ' <span class="qty-pill">' + inQty + "</span>"
-                    : "");
-
-              return (
-                '<article class="item-card' +
-                (inQty > 0 ? " in-cart" : "") +
-                (isSoldOut ? " sold-out" : "") +
-                '" ' +
-                (isSoldOut ? "" : 'data-open-item="' + esc(it.id) + '"') +
-                ">" +
-                '  <div class="item-body">' +
-                "    <div>" +
-                '      <div class="item-head">' +
-                '        <h3 class="item-name">' +
-                esc(it.name) +
-                "</h3>" +
-                '        <span class="price-leader"></span>' +
-                '        <span class="item-price">' +
-                priceDisplay +
-                "</span>" +
-                "      </div>" +
-                (it.badge
-                  ? '<span class="item-badge">' + esc(it.badge) + "</span>"
-                  : "") +
-                (it.description
-                  ? '<p class="item-desc">' + esc(it.description) + "</p>"
-                  : "") +
-                variantsHtml +
-                "    </div>" +
-                '    <div class="item-foot">' +
-                '      <span class="item-hint">' +
-                (isSoldOut
-                  ? "نفد مؤقتاً"
-                  : it.priceOnRequest
-                  ? esc(it.notePlaceholder || "اكتب الشكل أو الطلب في الملاحظة")
-                  : it.unitLabel
-                  ? "السعر " + esc(it.unitLabel)
-                  : hasOpts
-                  ? "اضغط للاختيار أو كتابة ملاحظة"
-                  : "جاهز للإضافة") +
-                "</span>" +
-                '      <button type="button" ' +
-                (isSoldOut ? "disabled " : "") +
-                'class="btn-add' +
-                (isAdded ? " added" : "") +
-                (isSoldOut ? " disabled" : "") +
-                '" data-quick-add="' +
-                esc(it.id) +
-                '">' +
-                btnText +
-                "</button>" +
-                "    </div>" +
-                "  </div>" +
-                (it.image
-                  ? '<div class="item-thumb"><img src="' +
-                    esc(it.image) +
-                    '" alt="' +
-                    esc(it.name) +
-                    '"></div>'
-                  : "") +
-                "</article>"
-              );
-            })
-            .join("") +
-          "  </div>" +
-          "</section>"
-      );
+      if (LAYOUT === "ledger") {
+        html.push(renderLedgerSection(cat, items));
+      } else if (LAYOUT === "lounge") {
+        html.push(renderLoungeSection(cat, items, visIdx));
+      } else {
+        html.push(renderDefaultSection(cat, items));
+      }
+      visIdx++;
     });
 
     var mainEl = document.getElementById("menu-root");
     if (!html.length) {
       mainEl.innerHTML =
-        '<div class="restaurant-foot-card">' +
+        '<div class="restaurant-foot-card" style="text-align:center">' +
         "  <h3>لا يوجد صنف مطابق للبحث</h3>" +
-        '  <button type="button" id="btn-reset-filter" class="btn-add" style="margin-top:8px">عرض المنيو بالكامل</button>' +
+        '  <button type="button" id="btn-reset-filter" class="btn-reset-empty" style="margin-top:10px">عرض المنيو بالكامل</button>' +
         "</div>";
       var resetBtn = document.getElementById("btn-reset-filter");
       if (resetBtn) {
@@ -1129,14 +1631,15 @@
 
       var notePlaceholder =
         it.notePlaceholder ||
-        "مثال: كتابة اسم معين على التورتة، تفاصيل الشكل، أو ملاحظة خاصة...";
+        R.defaultNotePlaceholder ||
+        "مثال: أي تعديل أو ملاحظة خاصة على الصنف...";
 
       root.innerHTML =
         '<div class="modal-backdrop" id="modal-bg">' +
         '  <div class="modal-panel" onclick="event.stopPropagation()">' +
         '    <div class="modal-header">' +
         "      <div>" +
-        '        <h3 style="margin:0;font-family:var(--font-display);font-size:19px;font-weight:900">' +
+        '        <h3 style="margin:0;font-family:var(--font-display);font-size:19px;font-weight:800">' +
         esc(it.name) +
         "</h3>" +
         (it.description
@@ -1201,7 +1704,7 @@
           return (
             '<div class="cart-line">' +
             '  <div style="min-width:0;flex:1">' +
-            '    <div style="font-size:14px;font-weight:900">' +
+            '    <div style="font-size:14px;font-weight:800">' +
             esc(l.name) +
             (l.variant
               ? ' <span style="color:var(--brand-primary)">(' +
@@ -1215,7 +1718,7 @@
                 "</div>"
               : "") +
             (l.addons && l.addons.length
-              ? '<div style="font-size:11px;font-weight:800">+ ' +
+              ? '<div style="font-size:11px;font-weight:700">+ ' +
                 esc(
                   l.addons
                     .map(function (a) {
@@ -1230,7 +1733,7 @@
                 esc(l.note) +
                 "</div>"
               : "") +
-            '    <div style="font-size:13px;font-weight:900;color:var(--brand-primary);margin-top:3px">' +
+            '    <div style="font-size:13px;font-weight:800;color:var(--brand-primary);margin-top:3px">' +
             (onReq ? "السعر حسب الشكل عند التأكيد" : fmtPrice(lineTotal(l))) +
             "</div>" +
             "  </div>" +
@@ -1238,7 +1741,7 @@
             '    <button type="button" data-cart-dec="' +
             esc(l.key) +
             '">−</button>' +
-            '    <span style="min-width:20px;text-align:center;font-weight:900;font-size:13px">' +
+            '    <span style="min-width:20px;text-align:center;font-weight:800;font-size:13px">' +
             l.qty +
             "</span>" +
             '    <button type="button" data-cart-inc="' +
@@ -1345,7 +1848,7 @@
         '  <div class="modal-panel" onclick="event.stopPropagation()">' +
         '    <div class="modal-header primary">' +
         "      <div>" +
-        '        <h3 style="margin:0;font-family:var(--font-display);font-size:18px;font-weight:900">فاتورة طلبك — ' +
+        '        <h3 style="margin:0;font-family:var(--font-display);font-size:18px;font-weight:800">فاتورة طلبك — ' +
         esc(R.name) +
         "</h3>" +
         '        <p style="margin:3px 0 0 0;font-size:11px;opacity:0.9;font-weight:700">تُرسل جاهزة ومنسقة على واتساب الفرع للتأكيد الفوري</p>' +
@@ -1356,10 +1859,10 @@
         (state.cart.length === 0
           ? '<p style="text-align:center;padding:30px 0;font-weight:800;color:var(--ink-muted)">السلة فارغة حالياً</p>'
           : '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
-            '  <span style="font-size:12px;font-weight:900">الأصناف المختارة (' +
+            '  <span style="font-size:12px;font-weight:800">الأصناف المختارة (' +
             cartCount() +
             ")</span>" +
-            '  <button type="button" id="btn-clear-cart" style="background:none;border:none;color:var(--brand-primary);font-size:12px;font-weight:900;cursor:pointer">إفراغ السلة</button>' +
+            '  <button type="button" id="btn-clear-cart" style="background:none;border:none;color:var(--brand-primary);font-size:12px;font-weight:800;cursor:pointer">إفراغ السلة</button>' +
             "</div>" +
             linesHtml +
             branchCheckoutHtml +
@@ -1369,7 +1872,7 @@
             '  <label class="field-label">ملاحظات إضافية أو موعد الاستلام (اختياري)</label>' +
             '  <input type="text" id="ch-note" class="text-input" value="' +
             esc(ch.note) +
-            '" placeholder="مثال: كتابة تهنئة، أو موعد الاستلام المطلوب...">' +
+            '" placeholder="مثال: موعد الاستلام أو أي ملاحظة إضافية...">' +
             "</div>" +
             (state.errorMsg
               ? '<div class="error-box">تنبيه: ' +
@@ -1381,7 +1884,7 @@
           ? '    <div class="modal-footer">' +
             '      <div style="display:flex;justify-content:space-between;align-items:center;font-size:14px">' +
             '        <span style="font-weight:800">إجمالي الأصناف المسعّرة:</span>' +
-            '        <strong style="font-size:18px;font-weight:900">' +
+            '        <strong style="font-size:18px;font-weight:800">' +
             fmtPrice(cartSubtotal()) +
             (cartHasOnRequest() ? " + حسب الشكل" : "") +
             "</strong>" +
@@ -1396,13 +1899,13 @@
             (br.phone
               ? '        <a href="tel:' +
                 esc(br.phone) +
-                '" class="btn-sec" style="background:var(--brand-accent)">اتصال: ' +
+                '" class="btn-sec btn-sec-call">اتصال: ' +
                 esc(br.phone) +
                 "</a>"
               : "") +
             "      </div>" +
-            '      <div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(0,0,0,0.12);text-align:center;font-size:11px;font-weight:700;color:var(--ink-muted)">' +
-            '        تعمل بواسطة <a href="https://qayma.me" target="_blank" rel="noopener" style="color:var(--ink);font-weight:900;text-decoration:underline">قايمة qayma.me</a> — <a href="' +
+            '      <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border-subtle);text-align:center;font-size:11px;font-weight:700;color:var(--ink-muted)">' +
+            '        تعمل بواسطة <a href="https://qayma.me" target="_blank" rel="noopener" style="color:var(--ink);font-weight:800;text-decoration:underline">قايمة qayma.me</a> — <a href="' +
             esc(
               C.whatsapp
                 ? "https://wa.me/" +
@@ -1415,7 +1918,7 @@
                     )
                 : "https://qayma.me"
             ) +
-            '" target="_blank" rel="noopener" style="color:var(--brand-primary);font-weight:900">جرّب منيو لمطعمك مجاناً</a>' +
+            '" target="_blank" rel="noopener" style="color:var(--brand-primary);font-weight:800">جرّب منيو لمطعمك مجاناً</a>' +
             "      </div>" +
             "    </div>"
           : "") +
@@ -1444,7 +1947,7 @@
               esc(src) +
               '" alt="' +
               esc(R.name) +
-              '" style="width:100%;height:auto;border:1px solid #ddd;margin-bottom:12px">'
+              '" style="width:100%;height:auto;border:1px solid var(--border-subtle);margin-bottom:12px">'
             );
           })
           .join("") +
@@ -1722,7 +2225,7 @@
       renderTabs();
       var sec = document.getElementById("cat-" + cid);
       if (sec) {
-        var top = sec.getBoundingClientRect().top + window.scrollY - 130;
+        var top = sec.getBoundingClientRect().top + window.scrollY - 145;
         window.scrollTo({ top: top, behavior: "smooth" });
       }
     });
@@ -1782,7 +2285,7 @@
           var el = document.getElementById("cat-" + cid);
           if (el) {
             var r = el.getBoundingClientRect();
-            if (r.top <= 170 && r.bottom > 170) {
+            if (r.top <= 180 && r.bottom > 180) {
               if (state.activeCat !== cid) {
                 state.activeCat = cid;
                 renderTabs();

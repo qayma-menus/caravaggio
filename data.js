@@ -26,6 +26,7 @@ var SUGAR_CHOICE = [
 
 window.RESTAURANT_DATA = {
   slug: "caravaggio",
+  layout: "lounge",
   name: "كاراڤاچيو | Caravaggio Coffee",
   tagline: "Every sip with freshness • قهوة وحلويات",
   shortIntro:
